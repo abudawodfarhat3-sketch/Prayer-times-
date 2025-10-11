@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="author" content="Abu Dawod">
+    <meta name="description" content="Islamic Prayer Times App for Saida, Lebanon - Made by Abu Dawod">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="أبو داود">
+    <meta name="application-name" content="أبو داود">
+    <meta name="theme-color" content="#16a34a">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoi2KPYqNmIINiv2KfZiNivIiwic2hvcnRfbmFtZSI6Itin2KjZiCDYr9in2YjYryIsInN0YXJ0X3VybCI6Ii4vaW5kZXguaHRtbCIsImRpc3BsYXkiOiJzdGFuZGFsb25lIiwiYmFja2dyb3VuZF9jb2xvciI6IiNmZmZmZmYiLCJ0aGVtZV9jb2xvciI6IiMxNmEzNGEiLCJpY29ucyI6W3sic3JjIjoiZGF0YTppbWFnZS9zdmcreG1sO2Jhc2U2NCxQSE4yWnlCNGJXeHVjejBpYUhSMGNEb3ZMM2QzZHk1M015NXZjbWN2TWpBd01DOXpkbWNpSUhacFpYZENiM2c5SWpBZ01DQXlOQ0F5TkNJK1BHTnBjbU5zWlNCamVEMGlNVElpSUdONVBTSXhNaUlnY2owSU5pSWdabWxzYkQwaUl6RTJZVE0wWVNJdlBqd3ZjM1puUGc9PSIsInNpemVzIjoiNTEyeDUxMiIsInR5cGUiOiJpbWFnZS9zdmcreG1sIn1dfQ==">
+    
+    <!-- Favicon / App Icon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iNiIgZmlsbD0iIzE2YTM0YSIvPjwvc3ZnPg==">
+    
+    <title>أبو داود - Prayer Times</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        .animate-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .transition-all { transition: all 0.3s ease; }
+        .transform:hover { transform: scale(1.02); }
+        .tab-button { transition: all 0.3s ease; }
+        .tab-button:hover { background-color: rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-green-50 to-blue-50 min-h-screen">
+    <div id="app"></div>
+
+    <script>
+        const app = {
+            state: {
+                currentTime: new Date(),
+                activeTab: 'prayer',
+                notificationsEnabled: localStorage.getItem('notificationsEnabled') === 'true',
+                selectedAthkar: 'morning',
+                selectedMuadhun: 'local1',
+                isPlayingAdhan: false,
+                currentAudio: null,
+                uploadedAudio: null,
+                prayerTimes: {
+                    fajr: '05:30',
+                    sunrise: '06:45',
+                    dhuhr: '12:15',
+                    asr: '15:45',
+                    maghrib: '18:20',
+                    isha: '19:45'
+                },
+                isLoading: false,
+                lastUpdated: null,
+                connectionStatus: 'loading',
+                currentHijriDate: '',
+                customLogo: localStorage.getItem('customLogo') || null
+            },
+            
+            SAIDA: { latitude: 33.5631, longitude: 35.3708, city: 'Saida', country: 'Lebanon' },
+            
+            muadhuns: {
+                local1: { name: 'Your Adhan 1 (haii3alslah936584)', desc: 'Local MP3 file from Downloads', url: './haii3alslah936584 (1).mp3' },
+                local2: { name: 'Your Adhan 2 (haii3alslah2336584)', desc: 'Local MP3 file from Downloads', url: './haii3alslah2336584.mp3' },
+                upload: { name: 'Upload Your Own', desc: 'Click to upload any MP3 file', url: null }
+            },
+            
+            athkar: {
+                morning: [
+                    { ar: 'اللَّهُمَّ أَعِنِّي عَلَى ذِكْرِكَ وَشُكْرِكَ وَحُسْنِ عِبَادَتِكَ', tr: 'Allahumma a\'inni ala dhikrika wa shukrika wa husni ibadatika', en: 'O Allah, help me to remember You, to thank You, and to worship You in the best manner.' },
+                    { ar: 'أَصْبَحْنَا وَأَصْبَحَ الْمُلْكُ لِلَّهِ', tr: 'Asbahna wa asbaha al-mulku lillahi', en: 'We have entered the morning and the whole kingdom belongs to Allah.' },
+                    { ar: 'اللَّهُمَّ بِكَ أَصْبَحْنَا وَبِكَ أَمْسَيْنَا وَبِكَ نَحْيَا وَبِكَ نَمُوتُ وَإِلَيْكَ النُّشُورُ', tr: 'Allahumma bika asbahna wa bika amsayna wa bika nahya wa bika namutu wa ilayka an-nushur', en: 'O Allah, by You we enter the morning and by You we enter the evening, by You we live and by You we die, and to You is the resurrection.' }
+                ],
+                evening: [
+                    { ar: 'أَمْسَيْنَا وَأَمْسَى الْمُلْكُ لِلَّهِ', tr: 'Amsayna wa amsa al-mulku lillahi', en: 'We have entered the evening and the whole kingdom belongs to Allah.' },
+                    { ar: 'اللَّهُمَّ إِنِّي أَعُوذُ بِكَ مِنْ عَذَابِ جَهَنَّمَ وَمِنْ عَذَابِ الْقَبْرِ', tr: 'Allahumma inni a\'udhu bika min adhabi jahannama wa min adhabi al-qabr', en: 'O Allah, I seek refuge in You from the punishment of Hell and from the punishment of the grave.' }
+                ],
+                general: [
+                    { ar: 'سُبْحَانَ اللَّهِ وَبِحَمْدِهِ', tr: 'Subhan Allahi wa bihamdihi', en: 'Glory be to Allah and praise be to Him.' },
+                    { ar: 'لَا إِلَهَ إِلَّا اللَّهُ وَحْدَهُ لَا شَرِيكَ لَهُ', tr: 'La ilaha illa Allah wahdahu la sharika lahu', en: 'There is no god but Allah alone, with no partner.' },
+                    { ar: 'أَسْتَغْفِرُ اللَّهَ الْعَظِيمَ', tr: 'Astaghfiru Allah al-adheem', en: 'I seek forgiveness from Allah, the Most Great.' }
+                ]
+            },
+            
+            tawbaReminders: [
+                'Remember to seek Allah\'s forgiveness regularly - He is Most Forgiving, Most Merciful.',
+                'Turn to Allah in repentance before it\'s too late. Every moment is a chance for a new beginning.',
+                'Allah loves those who turn to Him in repentance and purify themselves.',
+                'No sin is too great for Allah\'s forgiveness when you sincerely repent.',
+                'Make Istighfar (seeking forgiveness) a daily habit - it brings peace to the heart.'
+            ],
+            
+            async fetchPrayerTimes() {
+                this.state.isLoading = true;
+                this.state.connectionStatus = 'connecting';
+                this.render();
+                
+                try {
+                    const d = new Date();
+                    const url = `https://api.aladhan.com/v1/timings/${d.getDate()}-${d.getMonth()+1}-${d.getFullYear()}?latitude=${this.SAIDA.latitude}&longitude=${this.SAIDA.longitude}&method=8`;
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    
+                    this.state.prayerTimes = {
+                        fajr: data.data.timings.Fajr,
+                        sunrise: data.data.timings.Sunrise,
+                        dhuhr: data.data.timings.Dhuhr,
+                        asr: data.data.timings.Asr,
+                        maghrib: data.data.timings.Maghrib,
+                        isha: data.data.timings.Isha
+                    };
+                    
+                    this.state.currentHijriDate = `${data.data.date.hijri.day} ${data.data.date.hijri.month.en} ${data.data.date.hijri.year}`;
+                    this.state.connectionStatus = 'connected';
+                    this.state.lastUpdated = new Date();
+                } catch(e) {
+                    console.error(e);
+                    this.state.connectionStatus = 'offline';
+                }
+                
+                this.state.isLoading = false;
+                this.render();
+            },
+            
+            getNextPrayer() {
+                const now = `${String(new Date().getHours()).padStart(2,'0')}:${String(new Date().getMinutes()).padStart(2,'0')}`;
+                const prayers = [['fajr', this.state.prayerTimes.fajr], ['dhuhr', this.state.prayerTimes.dhuhr], ['asr', this.state.prayerTimes.asr], ['maghrib', this.state.prayerTimes.maghrib], ['isha', this.state.prayerTimes.isha]];
+                for(let [p,t] of prayers) if(t > now) return {name:p, time:t};
+                return {name:'fajr', time:this.state.prayerTimes.fajr};
+            },
+            
+            
+            
+            handleLogoUpload(event) {
+                const file = event.target.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        this.state.customLogo = e.target.result;
+                        localStorage.setItem('customLogo', e.target.result);
+                        alert('✅ Logo uploaded successfully!');
+                        this.render();
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    alert('Please upload a valid image file (PNG, JPG, etc.)');
+                }
+            },
+            
+            handleAudioUpload(event) {
+                const file = event.target.files[0];
+                if (file && file.type.startsWith('audio/')) {
+                    const audioUrl = URL.createObjectURL(file);
+                    this.state.uploadedAudio = audioUrl;
+                    alert('✅ Audio file uploaded successfully! Click Play to listen.');
+                    this.render();
+                } else {
+                    alert('Please upload a valid audio file (MP3, WAV, etc.)');
+                }
+            },
+            
+            playAdhan() {
+                if(this.state.isPlayingAdhan && this.state.currentAudio) {
+                    this.state.currentAudio.pause();
+                    this.state.currentAudio.currentTime = 0;
+                    this.state.isPlayingAdhan = false;
+                    this.state.currentAudio = null;
+                    this.render();
+                    return;
+                }
+                
+                // Use uploaded audio, or selected muadhun URL
+                let audioSource = this.state.uploadedAudio || this.muadhuns[this.state.selectedMuadhun].url;
+                
+                if (!audioSource) {
+                    alert('Please upload an MP3 file first, or make sure the MP3 files are in the same folder as this HTML file.');
+                    return;
+                }
+                
+                const audio = new Audio(audioSource);
+                
+                audio.addEventListener('error', (e) => {
+                    console.error('Audio error:', e);
+                    alert('⚠️ Cannot load audio file.\n\n✅ INSTRUCTIONS:\n1. Save this HTML file in your Downloads folder\n2. Make sure your MP3 files are in the same folder\n3. Or use the "Upload Audio" button to select any MP3 file');
+                    this.state.isPlayingAdhan = false;
+                    this.render();
+                });
+                
+                audio.play().then(() => {
+                    console.log('✅ Audio playing!');
+                    this.state.isPlayingAdhan = true;
+                    this.state.currentAudio = audio;
+                    this.render();
+                }).catch((err) => {
+                    console.error('Play error:', err);
+                    if (err.name === 'NotAllowedError') {
+                        alert('Browser blocked audio! Click anywhere on the page first, then try again.');
+                    } else {
+                        alert('⚠️ Cannot play audio.\n\n✅ SOLUTION: Use the "Upload Audio" button to select your MP3 file manually.');
+                    }
+                    this.state.isPlayingAdhan = false;
+                    this.render();
+                });
+                
+                audio.onended = () => {
+                    this.state.isPlayingAdhan = false;
+                    this.state.currentAudio = null;
+                    this.render();
+                };
+            },
+            
+            async toggleNotifications() {
+                if(!this.state.notificationsEnabled) {
+                    if('Notification' in window) {
+                        const perm = await Notification.requestPermission();
+                        if(perm === 'granted') {
+                            this.state.notificationsEnabled = true;
+                            localStorage.setItem('notificationsEnabled', 'true');
+                        }
+                    }
+                } else {
+                    this.state.notificationsEnabled = false;
+                    localStorage.setItem('notificationsEnabled', 'false');
+                }
+                this.render();
+            },
+            
+            icon(name) {
+                const icons = {
+                    moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>',
+                    bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path>',
+                    clock: '<circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>',
+                    sun: '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>',
+                    book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>',
+                    heart: '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>',
+                    wifi: '<path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line>',
+                    wifioff: '<line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line>',
+                    refresh: '<polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>',
+                    pin: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle>'
+                };
+                return `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">${icons[name]}</svg>`;
+            },
+            
+            render() {
+                const s = this.state;
+                const next = this.getNextPrayer();
+                
+                document.getElementById('app').innerHTML = `
+                    <div class="min-h-screen">
+                        <!-- App Header with Logo -->
+                        <div class="bg-gradient-to-r from-green-600 to-blue-600 text-white p-6 shadow-lg">
+                            <!-- App Logo -->
+                            <div class="app-logo arabic-text">أد</div>
+                            
+                            <div class="flex items-center justify-between flex-wrap gap-4">
+                                <div class="flex items-center space-x-3">
+                                    <div>
+                                        <h1 class="text-2xl font-bold arabic-text">أبو داود</h1>
+                                        <p class="text-sm text-green-100">Prayer Times - Saida, Lebanon</p>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-2xl font-bold">${s.currentTime.toLocaleTimeString('en-US', {hour12:false})}</div>
+                                    <div class="text-sm opacity-90">${s.currentTime.toLocaleDateString()}</div>
+                                    ${s.currentHijriDate ? `<div class="text-xs opacity-75 mt-1 arabic-text">${s.currentHijriDate}</div>` : ''}
+                                </div>
+                            </div>
+                            
+                            <!-- Custom Logo Section -->
+                            ${s.customLogo ? `
+                                <div class="mt-6 text-center">
+                                    <img src="${s.customLogo}" class="custom-logo-img mx-auto" style="max-height: 120px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.2);" alt="App Logo">
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <!-- Tabs -->
+                        <div class="bg-white shadow-sm">
+                            <div class="flex overflow-x-auto">
+                                ${['prayer', 'adhan', 'athkar', 'tawba', 'settings'].map(tab => `
+                                    <button onclick="app.state.activeTab='${tab}'; app.render()" 
+                                        class="tab-button flex-1 flex items-center justify-center space-x-2 py-4 px-6 border-b-2 transition-colors whitespace-nowrap ${
+                                            s.activeTab === tab ? 'border-green-500 text-green-600 bg-green-50' : 'border-transparent text-gray-500 hover:text-gray-700'
+                                        }">
+                                        <span class="font-medium capitalize">${tab === 'settings' ? '⚙️' : ''} ${tab}</span>
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <!-- Made by Abu Dawod Banner -->
+                        <div class="p-6 pb-4">
+                            <div class="bg-gradient-to-r from-green-600 to-blue-600 text-white p-4 rounded-xl shadow-lg text-center">
+                                <p class="text-lg font-semibold arabic-text">صُنع بـ ❤️ من قبل أبو داود</p>
+                                <p class="text-sm opacity-90">May Allah accept this work and make it beneficial for all Muslims</p>
+                            </div>
+                        </div>
+
+                        <!-- Content -->
+                        <div class="p-6 pt-0">
+                            ${s.activeTab === 'prayer' ? this.renderPrayer(next) : ''}
+                            ${s.activeTab === 'adhan' ? this.renderAdhan() : ''}
+                            ${s.activeTab === 'athkar' ? this.renderAthkar() : ''}
+                            ${s.activeTab === 'tawba' ? this.renderTawba() : ''}
+                            ${s.activeTab === 'settings' ? this.renderSettings() : ''}
+                        </div>
+                    </div>
+                `;
+            },
+            
+            renderSettings() {
+                const s = this.state;
+                return `
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-r from-purple-500 to-indigo-500 text-white p-6 rounded-xl shadow-lg">
+                            <h2 class="text-2xl font-bold mb-2">⚙️ App Settings</h2>
+                            <p class="text-lg opacity-90">Customize your Abu Dawod Prayer App</p>
+                        </div>
+
+                        <!-- Upload Custom Logo -->
+                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                            <h3 class="text-lg font-semibold mb-4">🎨 App Logo / Program Image</h3>
+                            <p class="text-sm text-gray-600 mb-4">Upload your mosque logo, organization image, or any custom image</p>
+                            
+                            <div class="custom-logo-container" onclick="document.getElementById('logoUpload').click()">
+                                ${s.customLogo ? `
+                                    <img src="${s.customLogo}" class="custom-logo-img" alt="Custom Logo">
+                                ` : `
+                                    <div class="text-center text-gray-400">
+                                        <svg class="w-16 h-16 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                        </svg>
+                                        <p class="text-sm">Click to upload image</p>
+                                        <p class="text-xs mt-1">PNG, JPG, or any image</p>
+                                    </div>
+                                `}
+                            </div>
+                            
+                            <input 
+                                type="file" 
+                                id="logoUpload"
+                                accept="image/*" 
+                                onchange="app.handleLogoUpload(event)"
+                                style="display: none;"
+                            />
+                            
+                            ${s.customLogo ? `
+                                <button 
+                                    onclick="app.state.customLogo = null; localStorage.removeItem('customLogo'); app.render();"
+                                    class="w-full mt-3 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg font-medium transition-colors">
+                                    🗑️ Remove Logo
+                                </button>
+                            ` : ''}
+                        </div>
+
+                        <!-- App Info -->
+                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                            <h3 class="text-lg font-semibold mb-4">ℹ️ App Information</h3>
+                            <div class="space-y-3 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">App Name:</span>
+                                    <span class="font-semibold arabic-text">أبو داود</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Version:</span>
+                                    <span class="font-semibold">1.0.0</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Location:</span>
+                                    <span class="font-semibold">Saida, Lebanon</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Developer:</span>
+                                    <span class="font-semibold">Abu Dawod</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Install as App -->
+                        <div class="bg-gradient-to-r from-green-50 to-blue-50 p-6 rounded-lg border-2 border-green-200">
+                            <h3 class="text-lg font-semibold mb-3 text-green-800">📱 Install as App</h3>
+                            <p class="text-sm text-gray-700 mb-4">Add this app to your home screen for a native app experience!</p>
+                            <div class="space-y-2 text-sm text-gray-600">
+                                <p><strong>On iPhone:</strong></p>
+                                <ol class="list-decimal list-inside space-y-1 ml-2">
+                                    <li>Tap Share button (square with arrow)</li>
+                                    <li>Select "Add to Home Screen"</li>
+                                    <li>Name it "أبو داود" and tap Add</li>
+                                </ol>
+                                <p class="mt-3"><strong>On Android:</strong></p>
+                                <ol class="list-decimal list-inside space-y-1 ml-2">
+                                    <li>Tap Menu (3 dots)</li>
+                                    <li>Select "Add to Home screen"</li>
+                                    <li>Confirm installation</li>
+                                </ol>
+                            </div>
+                        </div>
+
+                        <!-- Data Management -->
+                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                            <h3 class="text-lg font-semibold mb-4">💾 Data Management</h3>
+                            <button 
+                                onclick="if(confirm('Clear all app data? This will remove your custom logo and settings.')) { localStorage.clear(); location.reload(); }"
+                                class="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors">
+                                🔄 Reset App Data
+                            </button>
+                        </div>
+                    </div>
+                `;
+            },
+            
+            renderPrayer(next) {
+                const s = this.state;
+                return `
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-r from-green-500 to-blue-500 text-white p-6 rounded-xl shadow-lg transform transition-all hover:shadow-2xl">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold opacity-90">Next Prayer</h3>
+                                    <h2 class="text-3xl font-bold capitalize">${next.name}</h2>
+                                    <p class="text-xl opacity-90">${next.time}</p>
+                                </div>
+                                <div class="bg-white bg-opacity-20 p-4 rounded-full">${this.icon('bell')}</div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center space-x-3">
+                                    ${this.icon('bell')}
+                                    <span class="font-medium">Prayer Notifications</span>
+                                </div>
+                                <button onclick="app.toggleNotifications()" 
+                                    class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${s.notificationsEnabled ? 'bg-green-600' : 'bg-gray-200'}">
+                                    <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${s.notificationsEnabled ? 'translate-x-6' : 'translate-x-1'}"></span>
+                                </button>
+                            </div>
+                            <div class="flex items-center justify-between text-sm pt-3 border-t border-gray-100">
+                                <div class="flex items-center space-x-2">
+                                    ${s.connectionStatus === 'connected' ? `${this.icon('wifi')}<span class="text-green-600">Live updates for Saida</span>` : 
+                                      s.connectionStatus === 'connecting' ? `<div class="animate-spin">${this.icon('refresh')}</div><span class="text-blue-600">Connecting...</span>` :
+                                      `${this.icon('wifioff')}<span class="text-red-600">Using cached times</span>`}
+                                </div>
+                                ${s.lastUpdated ? `<span class="text-gray-500">${s.lastUpdated.toLocaleTimeString()}</span>` : ''}
+                            </div>
+                            <button onclick="app.fetchPrayerTimes()" ${s.isLoading ? 'disabled' : ''}
+                                class="w-full mt-3 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg font-medium transition-colors disabled:opacity-50">
+                                ${s.isLoading ? '🔄 Updating...' : '🔄 Refresh Prayer Times'}
+                            </button>
+                        </div>
+
+                        <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                            <h3 class="text-lg font-semibold p-4 border-b border-gray-200 bg-gray-50">Today's Prayer Times</h3>
+                            <div class="divide-y divide-gray-100">
+                                ${Object.entries(s.prayerTimes).map(([p,t]) => `
+                                    <div class="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+                                        <div class="flex items-center space-x-3">
+                                            <div class="w-3 h-3 rounded-full ${p === next.name ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}"></div>
+                                            <span class="font-medium capitalize text-gray-700">${p}</span>
+                                        </div>
+                                        <span class="text-lg font-semibold text-gray-900">${t}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+            
+            renderAdhan() {
+                const s = this.state;
+                return `
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-6 rounded-xl shadow-lg">
+                            <div class="flex items-center space-x-3 mb-4">
+                                ${this.icon('sun')}
+                                <h2 class="text-2xl font-bold">Adhan Player</h2>
+                            </div>
+                            <p class="text-lg opacity-90">Listen to the beautiful call to prayer</p>
+                        </div>
+
+                        <!-- Instructions -->
+                        <div class="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+                            <h3 class="font-bold text-blue-800 mb-2">📋 Instructions:</h3>
+                            <ol class="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+                                <li>Save this HTML file in your <strong>Downloads folder</strong></li>
+                                <li>Your MP3 files should be in the <strong>same folder</strong></li>
+                                <li>Or click "Choose File" below to upload any MP3</li>
+                            </ol>
+                        </div>
+
+                        <!-- Upload Audio -->
+                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                            <h3 class="text-lg font-semibold mb-4">📁 Upload Your Adhan MP3</h3>
+                            <input
+                                type="file"
+                                accept="audio/*"
+                                onchange="app.handleAudioUpload(event)"
+                                class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 cursor-pointer"
+                            />
+                            ${s.uploadedAudio ? '<p class="text-green-600 text-sm mt-2">✅ Audio uploaded! Ready to play.</p>' : ''}
+                        </div>
+
+                        <!-- Choose Adhan -->
+                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                            <h3 class="text-lg font-semibold mb-4">Choose Adhan Source</h3>
+                            <div class="space-y-3">
+                                ${Object.entries(this.muadhuns).map(([k,m]) => `
+                                    <div onclick="app.state.selectedMuadhun='${k}'; app.render()" 
+                                        class="p-4 rounded-lg border-2 cursor-pointer transition-all transform hover:scale-102 ${
+                                            s.selectedMuadhun === k ? 'border-amber-500 bg-amber-50 shadow-md' : 'border-gray-200 hover:border-gray-300'
+                                        }">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <h4 class="font-semibold text-gray-800">${m.name}</h4>
+                                                <p class="text-sm text-gray-600">${m.desc}</p>
+                                            </div>
+                                            <div class="w-4 h-4 rounded-full border-2 ${s.selectedMuadhun === k ? 'border-amber-500 bg-amber-500' : 'border-gray-300'}"></div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <!-- Play Button -->
+                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                            <div class="text-center space-y-4">
+                                <h3 class="text-lg font-semibold">${this.muadhuns[s.selectedMuadhun].name}</h3>
+                                <button onclick="app.playAdhan()" 
+                                    class="px-8 py-4 rounded-full text-white font-semibold text-lg transition-all transform hover:scale-105 shadow-lg ${
+                                        s.isPlayingAdhan ? 'bg-red-500 hover:bg-red-600 animate-pulse' : 'bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600'
+                                    }">
+                                    ${s.isPlayingAdhan ? '⏸️ Stop Adhan' : '▶️ Play Adhan'}
+                                </button>
+                                ${s.isPlayingAdhan ? `
+                                    <div class="bg-green-50 p-4 rounded-lg border border-green-200 animate-pulse">
+                                        <p class="text-green-700 font-medium">🎵 Playing Adhan...</p>
+                                        <p class="text-sm text-gray-600 mt-1">${s.uploadedAudio ? 'Your uploaded audio' : this.muadhuns[s.selectedMuadhun].name}</p>
+                                    </div>
+                                ` : ''}
+                                <p class="text-sm text-gray-500 mt-2">🔊 Make sure your volume is on</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+            
+            renderAthkar() {
+                const s = this.state;
+                return `
+                    <div class="space-y-6">
+                        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                            <div class="flex space-x-2 overflow-x-auto">
+                                ${Object.keys(this.athkar).map(cat => `
+                                    <button onclick="app.state.selectedAthkar='${cat}'; app.render()" 
+                                        class="px-4 py-2 rounded-lg font-medium capitalize transition-all whitespace-nowrap ${
+                                            s.selectedAthkar === cat ? 'bg-green-500 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                        }">
+                                        ${cat}
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        ${this.athkar[s.selectedAthkar].map(d => `
+                            <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 transform transition-all hover:shadow-lg">
+                                <div class="text-right mb-4">
+                                    <p class="text-2xl text-green-700 leading-relaxed">${d.ar}</p>
+                                </div>
+                                <div class="space-y-2">
+                                    <p class="text-gray-600 italic text-sm">${d.tr}</p>
+                                    <p class="text-gray-800 font-medium">${d.en}</p>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            },
+            
+            renderTawba() {
+                return `
+                    <div class="space-y-6">
+                        <div class="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-6 rounded-xl shadow-lg">
+                            <div class="flex items-center space-x-3 mb-4">
+                                ${this.icon('heart')}
+                                <h2 class="text-2xl font-bold">Tawba - Repentance</h2>
+                            </div>
+                            <p class="text-lg opacity-90">"And whoever repents after his wrongdoing and reforms, indeed Allah will turn to him in forgiveness." - Quran 5:39</p>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 text-center">
+                            <h3 class="text-lg font-semibold mb-4">Daily Istighfar</h3>
+                            <div class="text-3xl font-bold text-green-600 mb-2">أَسْتَغْفِرُ اللَّهَ الْعَظِيمَ</div>
+                            <p class="text-gray-600 mb-2">Astaghfiru Allah al-Adheem</p>
+                            <p class="text-sm text-gray-500 mb-4">I seek forgiveness from Allah, the Most Great</p>
+                        </div>
+
+                        <div class="space-y-4">
+                            <h3 class="text-lg font-semibold text-gray-700">Daily Reminders</h3>
+                            ${this.tawbaReminders.map(r => `
+                                <div class="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg border-l-4 border-purple-400 transform transition-all hover:shadow-md">
+                                    <p class="text-gray-700">${r}</p>
+                                </div>
+                            `).join('')}
+                        </div>
+
+                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                            <h3 class="text-lg font-semibold mb-4">Dua for Forgiveness</h3>
+                            <div class="border-l-4 border-green-400 pl-4">
+                                <p class="text-lg text-green-700 mb-2 text-right leading-relaxed">
+                                    رَبَّنَا ظَلَمْنَا أَنفُسَنَا وَإِن لَّمْ تَغْفِرْ لَنَا وَتَرْحَمْنَا لَنَكُونَنَّ مِنَ الْخَاسِرِينَ
+                                </p>
+                                <p class="text-sm text-gray-600 italic mb-1">
+                                    Rabbana zalamna anfusana wa in lam taghfir lana wa tarhamna lanakoonanna minal-khasireen
+                                </p>
+                                <p class="text-sm text-gray-700">
+                                    "Our Lord, we have wronged ourselves, and if You do not forgive us and have mercy upon us, we will surely be among the losers."
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+            
+            init() {
+                this.fetchPrayerTimes();
+                setInterval(() => {
+                    this.state.currentTime = new Date();
+                    this.render();
+                }, 1000);
+                setInterval(() => this.fetchPrayerTimes(), 21600000);
+                setInterval(() => {
+                    const now = new Date();
+                    if(now.getHours() === 0 && now.getMinutes() === 0) {
+                        this.fetchPrayerTimes();
+                    }
+                }, 60000);
+                this.render();
+            }
+        };
+        
+        window.app = app;
+        app.init();
+    </script>
+</body>
+</html>
