@@ -88,11 +88,11 @@
             },
             
             tawbaReminders: [
-                'Remember to seek Allah\'s forgiveness regularly - He is Most Forgiving, Most Merciful.',
-                'Turn to Allah in repentance before it\'s too late. Every moment is a chance for a new beginning.',
-                'Allah loves those who turn to Him in repentance and purify themselves.',
-                'No sin is too great for Allah\'s forgiveness when you sincerely repent.',
-                'Make Istighfar (seeking forgiveness) a daily habit - it brings peace to the heart.'
+                'تذكّر أن تستغفر الله بانتظام - هو الغفور الرحيم',
+                'تُب إلى الله قبل فوات الأوان. كل لحظة هي فرصة لبداية جديدة',
+                'إن الله يحب التوابين ويحب المتطهرين',
+                'لا ذنب أعظم من مغفرة الله عندما تتوب بصدق',
+                'اجعل الاستغفار عادة يومية - إنه يجلب السكينة للقلب'
             ],
             
             async fetchPrayerTimes() {
@@ -106,13 +106,22 @@
                     const res = await fetch(url);
                     const data = await res.json();
                     
+                    // Convert 24hr to 12hr format
+                    const convert24to12 = (time24) => {
+                        const [hours, minutes] = time24.split(':');
+                        const h = parseInt(hours);
+                        const period = h >= 12 ? 'PM' : 'AM';
+                        const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+                        return `${h12}:${minutes} ${period}`;
+                    };
+                    
                     this.state.prayerTimes = {
-                        fajr: data.data.timings.Fajr,
-                        sunrise: data.data.timings.Sunrise,
-                        dhuhr: data.data.timings.Dhuhr,
-                        asr: data.data.timings.Asr,
-                        maghrib: data.data.timings.Maghrib,
-                        isha: data.data.timings.Isha
+                        fajr: convert24to12(data.data.timings.Fajr),
+                        sunrise: convert24to12(data.data.timings.Sunrise),
+                        dhuhr: convert24to12(data.data.timings.Dhuhr),
+                        asr: convert24to12(data.data.timings.Asr),
+                        maghrib: convert24to12(data.data.timings.Maghrib),
+                        isha: convert24to12(data.data.timings.Isha)
                     };
                     
                     this.state.currentHijriDate = `${data.data.date.hijri.day} ${data.data.date.hijri.month.en} ${data.data.date.hijri.year}`;
@@ -128,10 +137,61 @@
             },
             
             getNextPrayer() {
-                const now = `${String(new Date().getHours()).padStart(2,'0')}:${String(new Date().getMinutes()).padStart(2,'0')}`;
-                const prayers = [['fajr', this.state.prayerTimes.fajr], ['dhuhr', this.state.prayerTimes.dhuhr], ['asr', this.state.prayerTimes.asr], ['maghrib', this.state.prayerTimes.maghrib], ['isha', this.state.prayerTimes.isha]];
-                for(let [p,t] of prayers) if(t > now) return {name:p, time:t};
-                return {name:'fajr', time:this.state.prayerTimes.fajr};
+                const now = new Date();
+                const currentHour = now.getHours();
+                const currentMin = now.getMinutes();
+                const currentTimeInMin = currentHour * 60 + currentMin;
+                
+                // Convert 12hr format back to minutes for comparison
+                const timeToMinutes = (time12) => {
+                    const match = time12.match(/(\d+):(\d+)\s*(AM|PM)/i);
+                    if (!match) return 0;
+                    let hours = parseInt(match[1]);
+                    const minutes = parseInt(match[2]);
+                    const period = match[3].toUpperCase();
+                    
+                    if (period === 'PM' && hours !== 12) hours += 12;
+                    if (period === 'AM' && hours === 12) hours = 0;
+                    
+                    return hours * 60 + minutes;
+                };
+                
+                const prayers = [
+                    ['fajr', this.state.prayerTimes.fajr],
+                    ['dhuhr', this.state.prayerTimes.dhuhr],
+                    ['asr', this.state.prayerTimes.asr],
+                    ['maghrib', this.state.prayerTimes.maghrib],
+                    ['isha', this.state.prayerTimes.isha]
+                ];
+                
+                for(let [prayer, time] of prayers) {
+                    const prayerTimeInMin = timeToMinutes(time);
+                    if(prayerTimeInMin > currentTimeInMin) {
+                        // Calculate time remaining
+                        const diffMin = prayerTimeInMin - currentTimeInMin;
+                        const hours = Math.floor(diffMin / 60);
+                        const minutes = diffMin % 60;
+                        
+                        let remaining = '';
+                        if (hours > 0) {
+                            remaining = `${hours} ساعة و ${minutes} دقيقة`;
+                        } else {
+                            remaining = `${minutes} دقيقة`;
+                        }
+                        
+                        this.state.timeRemaining = remaining;
+                        return {name: prayer, time: time};
+                    }
+                }
+                
+                // Next day's Fajr
+                const fajrTimeInMin = timeToMinutes(this.state.prayerTimes.fajr);
+                const diffMin = (24 * 60) - currentTimeInMin + fajrTimeInMin;
+                const hours = Math.floor(diffMin / 60);
+                const minutes = diffMin % 60;
+                this.state.timeRemaining = `${hours} ساعة و ${minutes} دقيقة`;
+                
+                return {name: 'fajr', time: this.state.prayerTimes.fajr};
             },
             
             
@@ -150,6 +210,72 @@
                 } else {
                     alert('Please upload a valid image file (PNG, JPG, etc.)');
                 }
+            },
+            
+            shareApp() {
+                const shareData = {
+                    title: 'أبو داود - Islamic Prayer App',
+                    text: 'Check out this beautiful Islamic prayer times app for Saida, Lebanon! Features: Daily prayer times, Adhan audio, Athkar, and more. Made by Abu Dawod.',
+                    url: window.location.href
+                };
+                
+                if (navigator.share) {
+                    navigator.share(shareData)
+                        .then(() => {
+                            document.getElementById('shareStatus').textContent = '✅ Shared successfully!';
+                            setTimeout(() => {
+                                document.getElementById('shareStatus').textContent = '';
+                            }, 3000);
+                        })
+                        .catch((error) => {
+                            if (error.name !== 'AbortError') {
+                                this.copyLink();
+                            }
+                        });
+                } else {
+                    this.copyLink();
+                }
+            },
+            
+            copyLink() {
+                const link = window.location.href;
+                
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(link)
+                        .then(() => {
+                            document.getElementById('shareStatus').textContent = '✅ Link copied to clipboard!';
+                            setTimeout(() => {
+                                document.getElementById('shareStatus').textContent = '';
+                            }, 3000);
+                        })
+                        .catch(() => {
+                            this.fallbackCopyLink(link);
+                        });
+                } else {
+                    this.fallbackCopyLink(link);
+                }
+            },
+            
+            fallbackCopyLink(link) {
+                const textArea = document.createElement('textarea');
+                textArea.value = link;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                try {
+                    document.execCommand('copy');
+                    document.getElementById('shareStatus').textContent = '✅ Link copied! Share it with WhatsApp, Telegram, etc.';
+                    setTimeout(() => {
+                        document.getElementById('shareStatus').textContent = '';
+                    }, 5000);
+                } catch (err) {
+                    document.getElementById('shareStatus').textContent = '⚠️ Please manually copy: ' + link;
+                }
+                
+                document.body.removeChild(textArea);
             },
             
             handleAudioUpload(event) {
@@ -246,6 +372,19 @@
                 return `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">${icons[name]}</svg>`;
             },
             
+            
+            translatePrayerName(prayer) {
+                const names = {
+                    fajr: 'الفجر',
+                    sunrise: 'الشروق',
+                    dhuhr: 'الظهر',
+                    asr: 'العصر',
+                    maghrib: 'المغرب',
+                    isha: 'العشاء'
+                };
+                return names[prayer] || prayer;
+            },
+            
             render() {
                 const s = this.state;
                 const next = this.getNextPrayer();
@@ -265,7 +404,7 @@
                                     </div>
                                 </div>
                                 <div class="text-right">
-                                    <div class="text-2xl font-bold">${s.currentTime.toLocaleTimeString('en-US', {hour12:false})}</div>
+                                    <div class="text-2xl font-bold">${s.currentTime.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', hour12: true})}</div>
                                     <div class="text-sm opacity-90">${s.currentTime.toLocaleDateString()}</div>
                                     ${s.currentHijriDate ? `<div class="text-xs opacity-75 mt-1 arabic-text">${s.currentHijriDate}</div>` : ''}
                                 </div>
@@ -281,13 +420,19 @@
 
                         <!-- Tabs -->
                         <div class="bg-white shadow-sm">
-                            <div class="flex overflow-x-auto">
-                                ${['prayer', 'adhan', 'athkar', 'tawba', 'settings'].map(tab => `
-                                    <button onclick="app.state.activeTab='${tab}'; app.render()" 
+                            <div class="flex overflow-x-auto" dir="rtl">
+                                ${[
+                                    {id: 'prayer', label: 'الصلاة'},
+                                    {id: 'adhan', label: 'الأذان'},
+                                    {id: 'athkar', label: 'الأذكار'},
+                                    {id: 'tawba', label: 'التوبة'},
+                                    {id: 'profile', label: '👤 الملف'}
+                                ].map(tab => `
+                                    <button onclick="app.state.activeTab='${tab.id}'; app.render()" 
                                         class="tab-button flex-1 flex items-center justify-center space-x-2 py-4 px-6 border-b-2 transition-colors whitespace-nowrap ${
-                                            s.activeTab === tab ? 'border-green-500 text-green-600 bg-green-50' : 'border-transparent text-gray-500 hover:text-gray-700'
+                                            s.activeTab === tab.id ? 'border-green-500 text-green-600 bg-green-50' : 'border-transparent text-gray-500 hover:text-gray-700'
                                         }">
-                                        <span class="font-medium capitalize">${tab === 'settings' ? '⚙️' : ''} ${tab}</span>
+                                        <span class="font-medium arabic-text">${tab.label}</span>
                                     </button>
                                 `).join('')}
                             </div>
@@ -307,8 +452,154 @@
                             ${s.activeTab === 'adhan' ? this.renderAdhan() : ''}
                             ${s.activeTab === 'athkar' ? this.renderAthkar() : ''}
                             ${s.activeTab === 'tawba' ? this.renderTawba() : ''}
-                            ${s.activeTab === 'settings' ? this.renderSettings() : ''}
+                            ${s.activeTab === 'profile' ? this.renderProfile() : ''}
                         </div>
+                    </div>
+                `;
+            },
+            
+            renderProfile() {
+                const s = this.state;
+                return `
+                    <div class="space-y-6">
+                        <!-- Developer Profile Header -->
+                        <div class="bg-gradient-to-r from-green-600 via-emerald-600 to-blue-600 text-white p-8 rounded-xl shadow-2xl">
+                            <div class="text-center">
+                                <!-- Profile Picture Upload Area -->
+                                <div class="mb-6">
+                                    <div class="w-32 h-32 mx-auto rounded-full bg-white bg-opacity-20 flex items-center justify-center cursor-pointer hover:bg-opacity-30 transition-all overflow-hidden border-4 border-white shadow-lg" onclick="document.getElementById('logoUpload').click()">
+                                        ${s.customLogo ? `
+                                            <img src="${s.customLogo}" class="w-full h-full object-cover" alt="Profile">
+                                        ` : `
+                                            <svg class="w-16 h-16 text-white opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                                            </svg>
+                                        `}
+                                    </div>
+                                    <input 
+                                        type="file" 
+                                        id="logoUpload"
+                                        accept="image/*" 
+                                        onchange="app.handleLogoUpload(event)"
+                                        style="display: none;"
+                                    />
+                                    <p class="text-sm mt-2 opacity-75">Click to upload profile photo</p>
+                                </div>
+                                
+                                <h1 class="text-4xl font-bold mb-2 arabic-text">أبو داود</h1>
+                                <p class="text-xl mb-2">Abu Dawod</p>
+                                <p class="text-lg opacity-90">Islamic App Developer</p>
+                                <div class="flex items-center justify-center gap-2 mt-4">
+                                    <span class="px-4 py-1 bg-white bg-opacity-20 rounded-full text-sm">Saida, Lebanon 🇱🇧</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- About This Project -->
+                        <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                            <h2 class="text-2xl font-bold mb-4 text-gray-800">📱 About This Application</h2>
+                            <div class="space-y-4 text-gray-700">
+                                <p class="leading-relaxed">
+                                    <strong class="text-green-600">Islamic Prayer Times & Athkar App</strong> is a comprehensive web application designed to help Muslims stay connected with their daily prayers and remembrance of Allah.
+                                </p>
+                                <p class="leading-relaxed">
+                                    This app provides accurate prayer times for Saida, Lebanon, beautiful Adhan audio, daily Athkar, and reminders for Tawba (repentance).
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Features -->
+                        <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                            <h2 class="text-2xl font-bold mb-4 text-gray-800">✨ Key Features</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                ${[
+                                    { icon: '🕌', title: 'Daily Prayer Times', desc: 'Accurate times for Saida updated automatically' },
+                                    { icon: '🔔', title: 'Prayer Notifications', desc: 'Get notified when it\'s time to pray' },
+                                    { icon: '🎵', title: 'Beautiful Adhan', desc: 'Multiple Adhan styles with audio playback' },
+                                    { icon: '📿', title: 'Daily Athkar', desc: 'Morning, evening, and general remembrances' },
+                                    { icon: '💜', title: 'Tawba Reminders', desc: 'Encouragement for repentance and forgiveness' },
+                                    { icon: '🌙', title: 'Hijri Calendar', desc: 'Display Islamic date alongside Gregorian' },
+                                    { icon: '📱', title: 'Installable App', desc: 'Works like a native mobile application' },
+                                    { icon: '🔄', title: 'Auto-Updates', desc: 'Prayer times update daily automatically' }
+                                ].map(f => `
+                                    <div class="flex items-start space-x-3 p-3 bg-green-50 rounded-lg">
+                                        <span class="text-2xl">${f.icon}</span>
+                                        <div>
+                                            <h3 class="font-semibold text-gray-800">${f.title}</h3>
+                                            <p class="text-sm text-gray-600">${f.desc}</p>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <!-- Technologies Used -->
+                        <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                            <h2 class="text-2xl font-bold mb-4 text-gray-800">🛠️ Technologies Used</h2>
+                            <div class="flex flex-wrap gap-3">
+                                ${['HTML5', 'CSS3', 'JavaScript', 'Tailwind CSS', 'AlAdhan API', 'Web Audio API', 'Local Storage', 'PWA'].map(tech => `
+                                    <span class="px-4 py-2 bg-gradient-to-r from-green-100 to-blue-100 text-gray-800 rounded-full text-sm font-semibold border border-green-200">${tech}</span>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <!-- Statistics -->
+                        <div class="bg-gradient-to-r from-purple-50 to-pink-50 p-6 rounded-xl shadow-lg border-2 border-purple-200">
+                            <h2 class="text-2xl font-bold mb-4 text-gray-800">📊 App Statistics</h2>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                ${[
+                                    { num: '5', label: 'Daily Prayers' },
+                                    { num: '10+', label: 'Athkar Duas' },
+                                    { num: '4', label: 'Adhan Styles' },
+                                    { num: '100%', label: 'Free & Open' }
+                                ].map(stat => `
+                                    <div class="text-center p-4 bg-white rounded-lg shadow-sm">
+                                        <div class="text-3xl font-bold text-green-600">${stat.num}</div>
+                                        <div class="text-sm text-gray-600 mt-1">${stat.label}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <!-- Contact & Share -->
+                        <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                            <h2 class="text-2xl font-bold mb-4 text-gray-800">🤝 Share This App</h2>
+                            <p class="text-gray-700 mb-4">Help spread the benefit! Share this Islamic prayer app with your community:</p>
+                            <div class="space-y-3">
+                                <button onclick="app.shareApp()" 
+                                    class="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-lg font-semibold hover:from-green-600 hover:to-blue-600 transition-all shadow-md">
+                                    📤 Share App
+                                </button>
+                                <button onclick="app.copyLink()" 
+                                    class="w-full px-6 py-3 bg-gray-100 text-gray-800 rounded-lg font-semibold hover:bg-gray-200 transition-all">
+                                    📋 Copy App Link
+                                </button>
+                                <div class="text-center text-sm text-gray-500 mt-2">
+                                    <p id="shareStatus"></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Credits & License -->
+                        <div class="bg-gradient-to-r from-green-600 to-blue-600 text-white p-6 rounded-xl shadow-lg text-center">
+                            <h2 class="text-2xl font-bold mb-3 arabic-text">بارك الله فيك</h2>
+                            <p class="text-lg mb-4">May Allah bless this work and make it a source of continuous reward (Sadaqah Jariyah)</p>
+                            <div class="text-sm opacity-90">
+                                <p>Developed with ❤️ by <strong class="arabic-text">أبو داود</strong></p>
+                                <p class="mt-2">Version 1.0.0 | 2025</p>
+                                <p class="mt-2">Free for all Muslims to use and benefit from</p>
+                            </div>
+                        </div>
+
+                        ${s.customLogo ? `
+                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 text-center">
+                                <button 
+                                    onclick="app.state.customLogo = null; localStorage.removeItem('customLogo'); app.render();"
+                                    class="px-6 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg font-medium transition-colors">
+                                    🗑️ Remove Profile Photo
+                                </button>
+                            </div>
+                        ` : ''}
                     </div>
                 `;
             },
@@ -318,25 +609,23 @@
                 return `
                     <div class="space-y-6">
                         <div class="bg-gradient-to-r from-purple-500 to-indigo-500 text-white p-6 rounded-xl shadow-lg">
-                            <h2 class="text-2xl font-bold mb-2">⚙️ App Settings</h2>
-                            <p class="text-lg opacity-90">Customize your Abu Dawod Prayer App</p>
+                            <h2 class="text-2xl font-bold mb-2">⚙️ Settings</h2>
+                            <p class="text-lg opacity-90">Upload your program image</p>
                         </div>
 
-                        <!-- Upload Custom Logo -->
+                        <!-- Upload Photo Only -->
                         <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                            <h3 class="text-lg font-semibold mb-4">🎨 App Logo / Program Image</h3>
-                            <p class="text-sm text-gray-600 mb-4">Upload your mosque logo, organization image, or any custom image</p>
+                            <h3 class="text-lg font-semibold mb-4 text-center">📸 Program Image</h3>
                             
                             <div class="custom-logo-container" onclick="document.getElementById('logoUpload').click()">
                                 ${s.customLogo ? `
-                                    <img src="${s.customLogo}" class="custom-logo-img" alt="Custom Logo">
+                                    <img src="${s.customLogo}" class="custom-logo-img" alt="Program Image">
                                 ` : `
                                     <div class="text-center text-gray-400">
                                         <svg class="w-16 h-16 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                                         </svg>
-                                        <p class="text-sm">Click to upload image</p>
-                                        <p class="text-xs mt-1">PNG, JPG, or any image</p>
+                                        <p class="text-sm font-semibold">Click to upload photo</p>
                                     </div>
                                 `}
                             </div>
@@ -352,63 +641,10 @@
                             ${s.customLogo ? `
                                 <button 
                                     onclick="app.state.customLogo = null; localStorage.removeItem('customLogo'); app.render();"
-                                    class="w-full mt-3 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg font-medium transition-colors">
-                                    🗑️ Remove Logo
+                                    class="w-full mt-4 px-4 py-3 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg font-semibold transition-colors">
+                                    🗑️ Remove Photo
                                 </button>
                             ` : ''}
-                        </div>
-
-                        <!-- App Info -->
-                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                            <h3 class="text-lg font-semibold mb-4">ℹ️ App Information</h3>
-                            <div class="space-y-3 text-sm">
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">App Name:</span>
-                                    <span class="font-semibold arabic-text">أبو داود</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Version:</span>
-                                    <span class="font-semibold">1.0.0</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Location:</span>
-                                    <span class="font-semibold">Saida, Lebanon</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Developer:</span>
-                                    <span class="font-semibold">Abu Dawod</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Install as App -->
-                        <div class="bg-gradient-to-r from-green-50 to-blue-50 p-6 rounded-lg border-2 border-green-200">
-                            <h3 class="text-lg font-semibold mb-3 text-green-800">📱 Install as App</h3>
-                            <p class="text-sm text-gray-700 mb-4">Add this app to your home screen for a native app experience!</p>
-                            <div class="space-y-2 text-sm text-gray-600">
-                                <p><strong>On iPhone:</strong></p>
-                                <ol class="list-decimal list-inside space-y-1 ml-2">
-                                    <li>Tap Share button (square with arrow)</li>
-                                    <li>Select "Add to Home Screen"</li>
-                                    <li>Name it "أبو داود" and tap Add</li>
-                                </ol>
-                                <p class="mt-3"><strong>On Android:</strong></p>
-                                <ol class="list-decimal list-inside space-y-1 ml-2">
-                                    <li>Tap Menu (3 dots)</li>
-                                    <li>Select "Add to Home screen"</li>
-                                    <li>Confirm installation</li>
-                                </ol>
-                            </div>
-                        </div>
-
-                        <!-- Data Management -->
-                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                            <h3 class="text-lg font-semibold mb-4">💾 Data Management</h3>
-                            <button 
-                                onclick="if(confirm('Clear all app data? This will remove your custom logo and settings.')) { localStorage.clear(); location.reload(); }"
-                                class="w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors">
-                                🔄 Reset App Data
-                            </button>
                         </div>
                     </div>
                 `;
@@ -419,21 +655,24 @@
                 return `
                     <div class="space-y-6">
                         <div class="bg-gradient-to-r from-green-500 to-blue-500 text-white p-6 rounded-xl shadow-lg transform transition-all hover:shadow-2xl">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <h3 class="text-lg font-semibold opacity-90">Next Prayer</h3>
-                                    <h2 class="text-3xl font-bold capitalize">${next.name}</h2>
-                                    <p class="text-xl opacity-90">${next.time}</p>
+                            <div class="text-center">
+                                <h3 class="text-lg font-semibold opacity-90 mb-2">الصلاة القادمة</h3>
+                                <h2 class="text-4xl font-bold mb-2 arabic-text">${this.translatePrayerName(next.name)}</h2>
+                                <p class="text-2xl opacity-90 mb-3">${next.time}</p>
+                                
+                                <!-- Time Remaining -->
+                                <div class="bg-white bg-opacity-20 rounded-lg p-4 mt-4">
+                                    <p class="text-sm opacity-90 mb-1">الوقت المتبقي</p>
+                                    <p class="text-3xl font-bold arabic-text">${s.timeRemaining}</p>
                                 </div>
-                                <div class="bg-white bg-opacity-20 p-4 rounded-full">${this.icon('bell')}</div>
                             </div>
                         </div>
 
                         <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
                             <div class="flex items-center justify-between mb-3">
-                                <div class="flex items-center space-x-3">
+                                <div class="flex items-center space-x-3 space-x-reverse">
                                     ${this.icon('bell')}
-                                    <span class="font-medium">Prayer Notifications</span>
+                                    <span class="font-medium arabic-text">تنبيهات الصلاة</span>
                                 </div>
                                 <button onclick="app.toggleNotifications()" 
                                     class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${s.notificationsEnabled ? 'bg-green-600' : 'bg-gray-200'}">
@@ -441,27 +680,27 @@
                                 </button>
                             </div>
                             <div class="flex items-center justify-between text-sm pt-3 border-t border-gray-100">
-                                <div class="flex items-center space-x-2">
-                                    ${s.connectionStatus === 'connected' ? `${this.icon('wifi')}<span class="text-green-600">Live updates for Saida</span>` : 
-                                      s.connectionStatus === 'connecting' ? `<div class="animate-spin">${this.icon('refresh')}</div><span class="text-blue-600">Connecting...</span>` :
-                                      `${this.icon('wifioff')}<span class="text-red-600">Using cached times</span>`}
+                                <div class="flex items-center space-x-2 space-x-reverse">
+                                    ${s.connectionStatus === 'connected' ? `${this.icon('wifi')}<span class="text-green-600 arabic-text">متصل بصيدا</span>` : 
+                                      s.connectionStatus === 'connecting' ? `<div class="animate-spin">${this.icon('refresh')}</div><span class="text-blue-600 arabic-text">جاري الاتصال...</span>` :
+                                      `${this.icon('wifioff')}<span class="text-red-600 arabic-text">غير متصل</span>`}
                                 </div>
-                                ${s.lastUpdated ? `<span class="text-gray-500">${s.lastUpdated.toLocaleTimeString()}</span>` : ''}
+                                ${s.lastUpdated ? `<span class="text-gray-500 arabic-text">آخر تحديث: ${s.lastUpdated.toLocaleTimeString('ar-LB', {hour: 'numeric', minute: '2-digit', hour12: true})}</span>` : ''}
                             </div>
                             <button onclick="app.fetchPrayerTimes()" ${s.isLoading ? 'disabled' : ''}
-                                class="w-full mt-3 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg font-medium transition-colors disabled:opacity-50">
-                                ${s.isLoading ? '🔄 Updating...' : '🔄 Refresh Prayer Times'}
+                                class="w-full mt-3 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg font-medium transition-colors disabled:opacity-50 arabic-text">
+                                ${s.isLoading ? '🔄 جاري التحديث...' : '🔄 تحديث أوقات الصلاة'}
                             </button>
                         </div>
 
                         <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                            <h3 class="text-lg font-semibold p-4 border-b border-gray-200 bg-gray-50">Today's Prayer Times</h3>
+                            <h3 class="text-lg font-semibold p-4 border-b border-gray-200 bg-gray-50 arabic-text text-right">أوقات الصلاة اليوم</h3>
                             <div class="divide-y divide-gray-100">
                                 ${Object.entries(s.prayerTimes).map(([p,t]) => `
-                                    <div class="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
-                                        <div class="flex items-center space-x-3">
+                                    <div class="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors" dir="rtl">
+                                        <div class="flex items-center space-x-3 space-x-reverse">
                                             <div class="w-3 h-3 rounded-full ${p === next.name ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}"></div>
-                                            <span class="font-medium capitalize text-gray-700">${p}</span>
+                                            <span class="font-medium text-gray-700 arabic-text text-lg">${this.translatePrayerName(p)}</span>
                                         </div>
                                         <span class="text-lg font-semibold text-gray-900">${t}</span>
                                     </div>
@@ -554,27 +793,40 @@
                 const s = this.state;
                 return `
                     <div class="space-y-6">
-                        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-                            <div class="flex space-x-2 overflow-x-auto">
+                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                            <div class="flex space-x-3 space-x-reverse overflow-x-auto" dir="rtl">
                                 ${Object.keys(this.athkar).map(cat => `
                                     <button onclick="app.state.selectedAthkar='${cat}'; app.render()" 
-                                        class="px-4 py-2 rounded-lg font-medium capitalize transition-all whitespace-nowrap ${
-                                            s.selectedAthkar === cat ? 'bg-green-500 text-white shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                        class="px-6 py-3 rounded-lg font-bold text-lg transition-all whitespace-nowrap arabic-text ${
+                                            s.selectedAthkar === cat ? 'bg-green-500 text-white shadow-lg' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                         }">
-                                        ${cat}
+                                        ${cat === 'morning' ? 'أذكار الصباح' : cat === 'evening' ? 'أذكار المساء' : 'أذكار عامة'}
                                     </button>
                                 `).join('')}
                             </div>
                         </div>
 
-                        ${this.athkar[s.selectedAthkar].map(d => `
-                            <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 transform transition-all hover:shadow-lg">
-                                <div class="text-right mb-4">
-                                    <p class="text-2xl text-green-700 leading-relaxed">${d.ar}</p>
+                        ${this.athkar[s.selectedAthkar].map((d, index) => `
+                            <div class="bg-gradient-to-br from-green-50 to-blue-50 p-8 rounded-2xl shadow-lg border-2 border-green-200 transform transition-all hover:shadow-2xl hover:scale-102">
+                                <div class="bg-white p-6 rounded-xl mb-6 shadow-md" dir="rtl">
+                                    <div class="text-center mb-3">
+                                        <span class="inline-block bg-green-500 text-white px-4 py-2 rounded-full text-lg font-bold">
+                                            الذكر ${index + 1}
+                                        </span>
+                                    </div>
+                                    <p class="text-4xl md:text-5xl text-green-800 leading-loose arabic-text text-center font-bold">
+                                        ${d.ar}
+                                    </p>
                                 </div>
-                                <div class="space-y-2">
-                                    <p class="text-gray-600 italic text-sm">${d.tr}</p>
-                                    <p class="text-gray-800 font-medium">${d.en}</p>
+                                <div class="space-y-4 bg-white p-6 rounded-xl shadow-md">
+                                    <div class="border-r-4 border-blue-400 pr-4" dir="rtl">
+                                        <p class="text-gray-500 text-xs mb-2 font-semibold">النطق بالإنجليزية:</p>
+                                        <p class="text-gray-700 italic text-xl leading-relaxed">${d.tr}</p>
+                                    </div>
+                                    <div class="border-r-4 border-purple-400 pr-4" dir="rtl">
+                                        <p class="text-gray-500 text-xs mb-2 font-semibold">المعنى:</p>
+                                        <p class="text-gray-900 font-semibold text-xl leading-relaxed">${d.en}</p>
+                                    </div>
                                 </div>
                             </div>
                         `).join('')}
@@ -586,40 +838,80 @@
                 return `
                     <div class="space-y-6">
                         <div class="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-6 rounded-xl shadow-lg">
-                            <div class="flex items-center space-x-3 mb-4">
+                            <div class="flex items-center space-x-3 space-x-reverse mb-4" dir="rtl">
                                 ${this.icon('heart')}
-                                <h2 class="text-2xl font-bold">Tawba - Repentance</h2>
+                                <h2 class="text-2xl font-bold arabic-text">التوبة - الاستغفار</h2>
                             </div>
-                            <p class="text-lg opacity-90">"And whoever repents after his wrongdoing and reforms, indeed Allah will turn to him in forgiveness." - Quran 5:39</p>
+                            <p class="text-lg opacity-90 arabic-text text-right leading-relaxed">
+                                "وَمَن تَابَ بَعْدَ ظُلْمِهِ وَأَصْلَحَ فَإِنَّ اللَّهَ يَتُوبُ عَلَيْهِ ۗ إِنَّ اللَّهَ غَفُورٌ رَّحِيمٌ" - سورة المائدة 39
+                            </p>
                         </div>
 
-                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 text-center">
-                            <h3 class="text-lg font-semibold mb-4">Daily Istighfar</h3>
-                            <div class="text-3xl font-bold text-green-600 mb-2">أَسْتَغْفِرُ اللَّهَ الْعَظِيمَ</div>
-                            <p class="text-gray-600 mb-2">Astaghfiru Allah al-Adheem</p>
-                            <p class="text-sm text-gray-500 mb-4">I seek forgiveness from Allah, the Most Great</p>
+                        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                            <h3 class="text-xl font-semibold mb-4 text-center arabic-text">الاستغفار اليومي</h3>
+                            <div class="text-center">
+                                <div class="text-4xl font-bold text-green-600 mb-4 arabic-text leading-relaxed">
+                                    أَسْتَغْفِرُ اللَّهَ الْعَظِيمَ
+                                </div>
+                                <p class="text-gray-600 mb-2 italic">Astaghfiru Allah al-Adheem</p>
+                                <p class="text-sm text-gray-500 mb-4 arabic-text">أستغفر الله العظيم وأتوب إليه</p>
+                            </div>
                         </div>
 
                         <div class="space-y-4">
-                            <h3 class="text-lg font-semibold text-gray-700">Daily Reminders</h3>
+                            <h3 class="text-xl font-semibold text-gray-700 arabic-text text-right">أدعية التوبة والاستغفار</h3>
+                            
+                            <div class="bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-lg border-l-4 border-purple-400">
+                                <p class="text-2xl text-gray-800 arabic-text text-right leading-loose mb-3">
+                                    اللَّهُمَّ إِنَّكَ عَفُوٌّ كَرِيمٌ تُحِبُّ الْعَفْوَ فَاعْفُ عَنَّا
+                                </p>
+                                <p class="text-sm text-gray-600 italic">Allahumma innaka 'afuwwun karimun tuhibbul-'afwa fa'fu 'anna</p>
+                                <p class="text-sm text-gray-700 mt-2 arabic-text text-right">
+                                    اللهم إنك عفو كريم تحب العفو فاعف عنا
+                                </p>
+                            </div>
+
+                            <div class="bg-gradient-to-r from-green-50 to-blue-50 p-6 rounded-lg border-l-4 border-green-400">
+                                <p class="text-2xl text-gray-800 arabic-text text-right leading-loose mb-3">
+                                    رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الْآخِرَةِ حَسَنَةً وَقِنَا عَذَابَ النَّارِ
+                                </p>
+                                <p class="text-sm text-gray-600 italic">Rabbana atina fid-dunya hasanatan wa fil-akhirati hasanatan wa qina 'adhaban-nar</p>
+                                <p class="text-sm text-gray-700 mt-2 arabic-text text-right">
+                                    اللهم آتنا في الدنيا حسنة وفي الآخرة حسنة وقنا عذاب النار
+                                </p>
+                            </div>
+
+                            <div class="bg-gradient-to-r from-purple-50 to-pink-50 p-6 rounded-lg border-l-4 border-pink-400">
+                                <p class="text-2xl text-gray-800 arabic-text text-right leading-loose mb-3">
+                                    اللَّهُمَّ آتِ نَفْسِي تَقْوَاهَا وَزَكِّهَا أَنتَ خَيْرُ مَن زَكَّاهَا أَنتَ وَلِيُّهَا وَمَوْلَاهَا
+                                </p>
+                                <p class="text-sm text-gray-600 italic">Allahumma ati nafsi taqwaha wa zakkiha anta khayru man zakkaha anta waliyyuha wa mawlaha</p>
+                                <p class="text-sm text-gray-700 mt-2 arabic-text text-right">
+                                    اللهم آت نفسي تقواها وزكها أنت خير من زكاها أنت وليها ومولاها
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="space-y-4">
+                            <h3 class="text-xl font-semibold text-gray-700 arabic-text text-right">تذكيرات يومية</h3>
                             ${this.tawbaReminders.map(r => `
-                                <div class="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg border-l-4 border-purple-400 transform transition-all hover:shadow-md">
-                                    <p class="text-gray-700">${r}</p>
+                                <div class="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg border-r-4 border-purple-400 transform transition-all hover:shadow-md" dir="rtl">
+                                    <p class="text-gray-700 arabic-text text-right">${r}</p>
                                 </div>
                             `).join('')}
                         </div>
 
                         <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                            <h3 class="text-lg font-semibold mb-4">Dua for Forgiveness</h3>
-                            <div class="border-l-4 border-green-400 pl-4">
-                                <p class="text-lg text-green-700 mb-2 text-right leading-relaxed">
+                            <h3 class="text-xl font-semibold mb-4 arabic-text text-right">دعاء الاستغفار</h3>
+                            <div class="border-r-4 border-green-400 pr-4" dir="rtl">
+                                <p class="text-2xl text-green-700 mb-3 text-right leading-loose arabic-text">
                                     رَبَّنَا ظَلَمْنَا أَنفُسَنَا وَإِن لَّمْ تَغْفِرْ لَنَا وَتَرْحَمْنَا لَنَكُونَنَّ مِنَ الْخَاسِرِينَ
                                 </p>
                                 <p class="text-sm text-gray-600 italic mb-1">
                                     Rabbana zalamna anfusana wa in lam taghfir lana wa tarhamna lanakoonanna minal-khasireen
                                 </p>
-                                <p class="text-sm text-gray-700">
-                                    "Our Lord, we have wronged ourselves, and if You do not forgive us and have mercy upon us, we will surely be among the losers."
+                                <p class="text-sm text-gray-700 arabic-text text-right">
+                                    "رَبَّنَا ظَلَمْنَا أَنفُسَنَا وَإِن لَّمْ تَغْفِرْ لَنَا وَتَرْحَمْنَا لَنَكُونَنَّ مِنَ الْخَاسِرِينَ"
                                 </p>
                             </div>
                         </div>
